@@ -12,3 +12,4 @@ xcb-d-generator-test-*
 *.o
 *.obj
 *.lst
+output/
