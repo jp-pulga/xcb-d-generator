@@ -7,11 +7,15 @@ import std.file;
 public import std.experimental.logger;
 public import std.experimental.xml;
 
+private import parsers.xcb_enum;
 private import parsers.xcb_struct;
+
 
 static class Parser {
 public static:
 	void parseXmlFiles() @trusted {
+		createOutDir();
+
 		foreach (file; dirEntries("xml", "*.xml", SpanMode.shallow)) {
 			info("Parsing file ", file);
 
@@ -29,6 +33,12 @@ public static:
 	}
 
 private static:
+	void createOutDir() {
+		if (!exists("output")) {
+			mkdir("output");
+		}
+	}
+
 	File initializeFile(string path) @trusted {
 		string fileName = path.baseName;
 		File fl = File("output" ~ dirSeparator ~ fileName.setExtension("d"), "w");
@@ -44,7 +54,14 @@ private static:
 					parseXcbStruct(cursor, fl);
 					break;
 
+				case "enum":
+					parseXcbEnum(cursor, fl);
+					break;
+
 				default:
+					if (cursor.kind == XMLKind.elementStart) {
+						warning("Cannot parse the element '", cursor.name, "'");
+					}
 					break;
 			}
 
