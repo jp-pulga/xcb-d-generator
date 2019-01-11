@@ -1,0 +1,13 @@
+{
+	"name": "xcb-d-generator",
+	"authors": [
+		"João Paulo Pulga"
+	],
+	"dependencies": {
+		"std-experimental-xml": "~>0.1.6"
+	},
+	"description": "Generator for xcb bindgs",
+	"copyright": "Copyright © 2019, Jo�o Paulo Pulga",
+	"license": "wtfpl",
+	"targetPath": "bin/"
+}

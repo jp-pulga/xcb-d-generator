@@ -1,0 +1,14 @@
+.dub
+docs.json
+__dummy.html
+docs/
+xcb-d-generator.so
+xcb-d-generator.dylib
+xcb-d-generator.dll
+xcb-d-generator.a
+xcb-d-generator.lib
+xcb-d-generator-test-*
+*.exe
+*.o
+*.obj
+*.lst
