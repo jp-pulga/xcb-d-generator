@@ -4,10 +4,10 @@
 		"João Paulo Pulga"
 	],
 	"dependencies": {
-		"std-experimental-xml": "~>0.1.6"
+		"dxml": "*"
 	},
 	"description": "Generator for xcb bindgs",
-	"copyright": "Copyright © 2019, Jo�o Paulo Pulga",
+	"copyright": "Copyright © 2019, João Paulo Pulga",
 	"license": "wtfpl",
 	"targetPath": "bin/"
 }
