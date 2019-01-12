@@ -13,3 +13,4 @@ xcb-d-generator-test-*
 *.obj
 *.lst
 output/
+bin/

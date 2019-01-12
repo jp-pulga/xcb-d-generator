@@ -1,5 +1,3 @@
-module parsers.parser;
-
 import std.path : baseName, dirSeparator, setExtension, stripExtension;
 import std.stdio;
 import std.file;
@@ -8,8 +6,7 @@ import std.conv : to;
 
 import std.experimental.logger;
 
-public:
-void parseXmlFiles() @trusted {
+void main() {
 	// Create the outpur dir if not exists
 	if (!exists("output")) {
 		mkdir("output");
