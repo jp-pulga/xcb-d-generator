@@ -62,7 +62,7 @@ void parseXcbStruct(ref DOMEntity!(string) entity, ref File outFile) {
 	import std.array : insertInPlace;
 
 	string[] result;
-	result ~= "struct " ~ entity.attributes[0].value;
+	result ~= "struct " ~ entity.attributes[0].value ~ " {\n";
 
 	int aligns = 0;
 	foreach (c; entity.children) {
@@ -73,13 +73,15 @@ void parseXcbStruct(ref DOMEntity!(string) entity, ref File outFile) {
 			} else if (attrs[0].name == "bytes") {
 				result ~= "\tbyte[" ~ attrs[0].value ~ "] align" ~ (aligns++).to!string() ~ ";";
 			} else {
-				warning("Cannot parse pad '" ~ attrs[0].name ~ "'");
+				warning("Cannot parse pad '", attrs[0].name, "'");
 			}
 		} else if (c.name == "field") {
 			string name = attrs[0].value;
 			string type = attrs[1].value;
 
 			result ~= "\t" ~ name ~ " " ~ type ~ ";";
+		} else {
+			warning("Struct parser cannot handle ", c.name);
 		}
 	}
 
@@ -104,9 +106,9 @@ void parseXcbEnum(ref DOMEntity!(string) entity, ref File outFile) {
 			values ~= name;
 
 			if (isBit) {
-				outFile.writeln("\t" ~ name ~ " = 1 << " ~ val ~ ";");
+				outFile.writeln("\t" ~ name ~ " = 1 << " ~ val ~ ",");
 			} else {
-				outFile.writeln("\t" ~ name ~ " = " ~ val ~ ";");
+				outFile.writeln("\t" ~ name ~ " = " ~ val ~ ",");
 			}
 		}
 	}
