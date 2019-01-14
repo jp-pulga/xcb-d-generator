@@ -2,9 +2,13 @@ import std.path : baseName, dirSeparator, setExtension, stripExtension;
 import std.stdio;
 import std.file;
 import dxml.dom;
+import dxml.parser : TextPos;
 import std.conv : to;
+import std.typecons;
 
 import std.experimental.logger;
+
+alias Attribute = Tuple!(string, "name", string, "value", TextPos, "pos");
 
 void main() {
 	// Create the outpur dir if not exists
@@ -46,6 +50,18 @@ void main() {
 }
 
 private:
+
+Attribute byName(Attribute[] attrs, string name) {
+	foreach (attr; attrs) {
+		if (attr.name == name) {
+			return attr;
+		}
+	}
+
+	return Attribute.init;
+}
+
+
 File initializeFile(string path) @trusted {
 	string fileName = path.baseName;
 	File fl = File("output" ~ dirSeparator ~ fileName.setExtension("d"), "w");
@@ -55,50 +71,76 @@ File initializeFile(string path) @trusted {
 }
 
 string toSnakeCase(const string input) {
-	import std.uni;
+	import std.uni : isNumber, isUpper, isLower, toLower;
 
 	string firstPass(const string input) {
-		if (input.length < 3) return input;
-		
+		if (input.length < 3)
+			return input;
+
 		string output;
-		for(auto index = 2; index < input.length; index++) {
+		for (auto index = 2; index < input.length; index++) {
 			output ~= input[index - 2];
 			if (input[index - 1].isUpper && input[index].isLower)
 				output ~= "_";
 		}
-		
-		return output ~ input[$-2..$];
+
+		return output ~ input[$ - 2 .. $];
 	}
-	
+
 	string secondPass(const string input) {
-		if (input.length < 2) return input;
-		
+		if (input.length < 2)
+			return input;
+
 		string output;
-		for(auto index = 1; index < input.length; index++) {
+		for (auto index = 1; index < input.length; index++) {
 			output ~= input[index - 1];
-			if (input[index].isUpper && (input[index-1].isLower || input[index-1].isNumber))
+			if (input[index].isUpper && (input[index - 1].isLower || input[index - 1].isNumber))
 				output ~= "_";
 		}
-		
-		return output ~ input[$-1..$];
+
+		return output ~ input[$ - 1 .. $];
 	}
-	
-	if (input.length < 2) return input.toLower;
-	
+
+	if (input.length < 2)
+		return input.toLower;
+
 	string output = firstPass(input);
 	output = secondPass(output);
-	
+
 	return output.toLower;
 }
 
 string toXcbName(string name, string prefix, string sufix) {
-	return "xcb_" ~ prefix ~ "_" ~ name.toSnakeCase() ~ sufix;
+	if (prefix.length) {
+		return "xcb_" ~ prefix ~ "_" ~ name.toSnakeCase() ~ sufix;
+	} else {
+		return "xcb_" ~ name.toSnakeCase() ~ sufix;
+	}
 }
 
 string toDlangType(string xcbType) {
 	switch (xcbType) {
+	case "BYTE":
+	case "CARD8":
 	case "INT8":
 		return "byte";
+
+	case "CARD16":
+	case "INT16":
+		return "short";
+
+	case "CARD32":
+	case "INT32":
+		return "int";
+
+	case "WINDOW":
+		return "xcb_window_t";
+
+	case "COLORMAP":
+		return "xcb_colormap_t";
+
+	case "VISUALID":
+		return "xcb_visualid_t";
 
 	default:
 		return xcbType;
@@ -126,7 +168,7 @@ void parseXcbStruct(ref DOMEntity!string dom, string prefix, ref File outFile) {
 	import std.array : insertInPlace;
 
 	string[] result;
-	result ~= "struct " ~ dom.attributes[0].value.toXcbName(prefix, "_t") ~ " {\n";
+	result ~= "struct " ~ dom.attributes[0].value.toXcbName(prefix, "_t") ~ " {";
 
 	int aligns = 0;
 	foreach (c; dom.children) {
@@ -135,15 +177,15 @@ void parseXcbStruct(ref DOMEntity!string dom, string prefix, ref File outFile) {
 			if (attrs[0].name == "align") {
 				result.insertInPlace(1, "align(" ~ attrs[0].value ~ "):");
 			} else if (attrs[0].name == "bytes") {
-				result ~= "\tbyte[" ~ attrs[0].value ~ "] align" ~ (aligns++).to!string() ~ ";";
+				result ~= "\tbyte[" ~ attrs[0].value ~ "] pad" ~ (aligns++).to!string() ~ ";";
 			} else {
 				warning("Cannot parse pad '", attrs[0].name, "'");
 			}
 		} else if (c.name == "field") {
-			string name = attrs[0].value;
-			string type = attrs[1].value;
+			string type = attrs.byName("type").value.toDlangType;
+			string name = attrs.byName("name").value;
 
-			result ~= "\t" ~ name ~ " " ~ type ~ ";";
+			result ~= "\t" ~ type ~ " " ~ name ~ ";";
 		} else {
 			warning("Struct parser cannot handle ", c.name);
 		}
@@ -156,14 +198,18 @@ void parseXcbStruct(ref DOMEntity!string dom, string prefix, ref File outFile) {
 }
 
 void parseXcbEnum(ref DOMEntity!string dom, string prefix, ref File outFile) {
+	import std.uni : toUpper;
+
 	string enumName = dom.attributes[0].value.toXcbName(prefix, "_t");
 	outFile.writeln("enum " ~ enumName ~ " {");
 
 	string[] values;
+
+	immutable string enumPrefix = enumName.toUpper()[0 .. $ - 1]; //Removes the 't'
 	foreach (c; dom.children) {
 		auto attrs = c.attributes;
 		if (attrs.length) {
-			string name = attrs[0].value;
+			string name = enumPrefix ~ attrs[0].value.toSnakeCase.toUpper;
 			immutable bool isBit = c.children[0].name == "bit";
 			string val = c.children[0].children[0].text;
 
