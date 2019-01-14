@@ -36,7 +36,7 @@ void main() {
 					break;
 			}
 
-			contents.popToElementStart();
+			contents.popToNext(EntityType.elementStart);
 		}
 	}
 }
@@ -50,30 +50,53 @@ File initializeFile(string path) @trusted {
 	return fl;
 }
 
-void popToElementStart(ref EntityRange!(simpleXML, string) entity) {
+string toDlangType(string xcbType) {
+	switch (xcbType) {
+		case "INT8":
+			return "byte";
+
+		default:
+			return xcbType;
+	}
+}
+
+void popTo(ref EntityRange!(simpleXML, string) entity, EntityType type) {
+	while(!entity.empty && entity.front.type != type) {
+		entity.popFront();
+	}
+}
+
+void popToNext(ref EntityRange!(simpleXML, string) entity, EntityType type) {
 	entity.popFront();
 
-	while(!entity.empty && entity.front.type != EntityType.elementStart) {
+	while(!entity.empty && entity.front.type != type) {
 		entity.popFront();
 	}
 }
 
 void parseXcbStruct(ref EntityRange!(simpleXML, string) entity, ref File outFile) {
-	outFile.writeln("struct " ~ entity.front.attributes.front.value ~ " {");
+	string[] result;
+	result ~= entity.front.attributes.front.value;
+	entity.popToNext(EntityType.elementStart);
 
-	entity.popToElementStart();
+	while (entity.front.name == "field" || entity.front.name == "pad") {
+		if (entity.front.name == "pad") {
+			result[0] = "align(" ~ entity.front.attributes.front.value ~ ") " ~ result[0];
+		} else {
+			auto attrs = entity.front.attributes;
+			if (!attrs.empty) {
+				string name = attrs.front.value;
+				attrs.popFront();
+				string type = attrs.front.value;
 
-	while (entity.front.name == "field") {
-		auto attrs = entity.front.attributes;
-		if (!attrs.empty) {
-			string name = attrs.front.value;
-			attrs.popFront();
-			string type = attrs.front.value;
-
-			outFile.writeln("\t" ~ name ~ " " ~ type ~ ";");
+				result ~= "\t" ~ name ~ " " ~ type ~ ";";
+			}
 		}
+		entity.popToNext(EntityType.elementStart);
+	}
 
-		entity.popToElementStart();
+	foreach (r; result) {
+		outFile.writeln(r);
 	}
 	outFile.writeln("}\n");
 }
@@ -82,15 +105,15 @@ void parseXcbEnum(ref EntityRange!(simpleXML, string) entity, ref File outFile) 
 	string enumName = entity.front.attributes.front.value;
 	outFile.writeln("enum " ~ enumName ~ " {");
 
-	entity.popToElementStart();
+	entity.popToNext(EntityType.elementStart);
 
 	string[] values;
 	while (entity.front.name == "item") {
 		auto attrs = entity.front.attributes;
 		if (!attrs.empty) {
-			string name = attrs.front.value;
-			entity.popToElementStart();
-			bool isBit = entity.front.name == "bit";
+			string name = attrs.front().value;
+			entity.popToNext(EntityType.elementStart);
+			immutable bool isBit = entity.front.name == "bit";
 			entity.popFront();
 			string val = entity.front.text;
 
@@ -103,7 +126,7 @@ void parseXcbEnum(ref EntityRange!(simpleXML, string) entity, ref File outFile) 
 			}
 		}
 
-		entity.popToElementStart();
+		entity.popToNext(EntityType.elementStart);
 	}
 	outFile.writeln("}\n");
 
