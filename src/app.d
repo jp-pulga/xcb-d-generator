@@ -54,26 +54,45 @@ File initializeFile(string path) @trusted {
 	return fl;
 }
 
-string toSnakeCase(string name) {
-	import std.range : Appender;
-	import std.uni : isUpper, toLower;
+string toSnakeCase(const string input) {
+	import std.uni;
 
-	Appender!string res;
-
-	foreach(s; name) {
-		if (s.isUpper) {
-			res.put("_");
-			res.put(s.toLower);
-		} else {
-			res.put(s);
+	string firstPass(const string input) {
+		if (input.length < 3) return input;
+		
+		string output;
+		for(auto index = 2; index < input.length; index++) {
+			output ~= input[index - 2];
+			if (input[index - 1].isUpper && input[index].isLower)
+				output ~= "_";
 		}
+		
+		return output ~ input[$-2..$];
 	}
-
-	return res.data;
+	
+	string secondPass(const string input) {
+		if (input.length < 2) return input;
+		
+		string output;
+		for(auto index = 1; index < input.length; index++) {
+			output ~= input[index - 1];
+			if (input[index].isUpper && (input[index-1].isLower || input[index-1].isNumber))
+				output ~= "_";
+		}
+		
+		return output ~ input[$-1..$];
+	}
+	
+	if (input.length < 2) return input.toLower;
+	
+	string output = firstPass(input);
+	output = secondPass(output);
+	
+	return output.toLower;
 }
 
 string toXcbName(string name, string prefix, string sufix) {
-	return "xcb_" ~ prefix ~ name.toSnakeCase() ~ sufix;
+	return "xcb_" ~ prefix ~ "_" ~ name.toSnakeCase() ~ sufix;
 }
 
 string toDlangType(string xcbType) {
@@ -87,13 +106,15 @@ string toDlangType(string xcbType) {
 }
 
 string parseXcbDeclaration(ref DOMEntity!string dom, ref File outFile) {
-	if (dom.attributes.length == 5) {
+	if (dom.attributes.length >= 5) {
 		import std.uni : toUpper, toLower;
 
 		enum format = "immutable enum XCB_%s_%s_VERSION = %s;";
 		auto attrs = dom.attributes;
 		outFile.writefln(format, attrs[2].value.toUpper, "MAJOR", attrs[3].value);
 		outFile.writefln(format, attrs[2].value.toUpper, "MINOR", attrs[3].value);
+		outFile.writeln();
+		outFile.writefln("__gshared extern xcb_extension_t xcb_" ~ attrs[2].value.toLower ~ "_id;");
 		outFile.writeln();
 
 		return attrs[2].value.toLower;
@@ -135,8 +156,8 @@ void parseXcbStruct(ref DOMEntity!string dom, string prefix, ref File outFile) {
 }
 
 void parseXcbEnum(ref DOMEntity!string dom, string prefix, ref File outFile) {
-	string enumName = dom.attributes[0].value;
-	outFile.writeln("enum " ~ enumName.toXcbName(prefix, "_t") ~ " {");
+	string enumName = dom.attributes[0].value.toXcbName(prefix, "_t");
+	outFile.writeln("enum " ~ enumName ~ " {");
 
 	string[] values;
 	foreach (c; dom.children) {
