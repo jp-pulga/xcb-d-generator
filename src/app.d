@@ -18,21 +18,27 @@ void main() {
 		File fl = initializeFile(file);
 		auto dom = parseDOM!simpleXML(readText(file));
 
+		immutable string prefix = parseXcbDeclaration(dom.children[0], fl);
 		foreach (c; dom.children[0].children) {
 			switch (c.name) {
 			case "struct":
-				parseXcbStruct(c, fl);
+				parseXcbStruct(c, prefix, fl);
 				break;
 
 			case "enum":
-				parseXcbEnum(c, fl);
+				parseXcbEnum(c, prefix, fl);
 				break;
 
 			case "import":
 				parseXcbImport(c, fl);
 				break;
 
+			case "request":
+				parseXcbRequest(c, fl);
+				break;
+
 			default:
+				warning("Cannot parse member '", c.name, "'");
 				break;
 			}
 		}
@@ -48,6 +54,28 @@ File initializeFile(string path) @trusted {
 	return fl;
 }
 
+string toSnakeCase(string name) {
+	import std.range : Appender;
+	import std.uni : isUpper, toLower;
+
+	Appender!string res;
+
+	foreach(s; name) {
+		if (s.isUpper) {
+			res.put("_");
+			res.put(s.toLower);
+		} else {
+			res.put(s);
+		}
+	}
+
+	return res.data;
+}
+
+string toXcbName(string name, string prefix, string sufix) {
+	return "xcb_" ~ prefix ~ name.toSnakeCase() ~ sufix;
+}
+
 string toDlangType(string xcbType) {
 	switch (xcbType) {
 	case "INT8":
@@ -58,14 +86,29 @@ string toDlangType(string xcbType) {
 	}
 }
 
-void parseXcbStruct(ref DOMEntity!(string) entity, ref File outFile) {
+string parseXcbDeclaration(ref DOMEntity!string dom, ref File outFile) {
+	if (dom.attributes.length == 5) {
+		import std.uni : toUpper, toLower;
+
+		enum format = "immutable enum XCB_%s_%s_VERSION = %s;";
+		auto attrs = dom.attributes;
+		outFile.writefln(format, attrs[2].value.toUpper, "MAJOR", attrs[3].value);
+		outFile.writefln(format, attrs[2].value.toUpper, "MINOR", attrs[3].value);
+		outFile.writeln();
+
+		return attrs[2].value.toLower;
+	}
+	return "";
+}
+
+void parseXcbStruct(ref DOMEntity!string dom, string prefix, ref File outFile) {
 	import std.array : insertInPlace;
 
 	string[] result;
-	result ~= "struct " ~ entity.attributes[0].value ~ " {\n";
+	result ~= "struct " ~ dom.attributes[0].value.toXcbName(prefix, "_t") ~ " {\n";
 
 	int aligns = 0;
-	foreach (c; entity.children) {
+	foreach (c; dom.children) {
 		auto attrs = c.attributes;
 		if (c.name == "pad") {
 			if (attrs[0].name == "align") {
@@ -91,12 +134,12 @@ void parseXcbStruct(ref DOMEntity!(string) entity, ref File outFile) {
 	outFile.writeln("}\n");
 }
 
-void parseXcbEnum(ref DOMEntity!(string) entity, ref File outFile) {
-	string enumName = entity.attributes[0].value;
-	outFile.writeln("enum " ~ enumName ~ " {");
-	
+void parseXcbEnum(ref DOMEntity!string dom, string prefix, ref File outFile) {
+	string enumName = dom.attributes[0].value;
+	outFile.writeln("enum " ~ enumName.toXcbName(prefix, "_t") ~ " {");
+
 	string[] values;
-	foreach (c; entity.children) {
+	foreach (c; dom.children) {
 		auto attrs = c.attributes;
 		if (attrs.length) {
 			string name = attrs[0].value;
@@ -120,6 +163,10 @@ void parseXcbEnum(ref DOMEntity!(string) entity, ref File outFile) {
 	outFile.writeln();
 }
 
-void parseXcbImport(ref DOMEntity!(string) entity, ref File outFile) {
-	outFile.writeln("import xcb." ~ entity.children[0].text ~ ";");
+void parseXcbImport(ref DOMEntity!(string) dom, ref File outFile) {
+	outFile.writeln("import xcb." ~ dom.children[0].text ~ ";");
+}
+
+void parseXcbRequest(ref DOMEntity!string dom, ref File outFile) {
+
 }
