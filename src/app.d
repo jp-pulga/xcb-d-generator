@@ -9,6 +9,8 @@ import std.typecons;
 import std.experimental.logger;
 
 alias Attribute = Tuple!(string, "name", string, "value", TextPos, "pos");
+private immutable enum padFormat = "\tbyte[%s] pad%d;";
+private immutable enum structFormat = "struct %s {";
 
 void main() {
 	// Create the outpur dir if not exists
@@ -38,7 +40,7 @@ void main() {
 				break;
 
 			case "request":
-				parseXcbRequest(c, fl);
+				parseXcbRequest(c, prefix, fl);
 				break;
 
 			default:
@@ -60,7 +62,6 @@ Attribute byName(Attribute[] attrs, string name) {
 
 	return Attribute.init;
 }
-
 
 File initializeFile(string path) @trusted {
 	string fileName = path.baseName;
@@ -166,9 +167,10 @@ string parseXcbDeclaration(ref DOMEntity!string dom, ref File outFile) {
 
 void parseXcbStruct(ref DOMEntity!string dom, string prefix, ref File outFile) {
 	import std.array : insertInPlace;
+	import std.format : format;
 
 	string[] result;
-	result ~= "struct " ~ dom.attributes[0].value.toXcbName(prefix, "_t") ~ " {";
+	result ~= format(structFormat, dom.attributes[0].value.toXcbName(prefix, "_t"));
 
 	int aligns = 0;
 	foreach (c; dom.children) {
@@ -177,7 +179,7 @@ void parseXcbStruct(ref DOMEntity!string dom, string prefix, ref File outFile) {
 			if (attrs[0].name == "align") {
 				result.insertInPlace(1, "align(" ~ attrs[0].value ~ "):");
 			} else if (attrs[0].name == "bytes") {
-				result ~= "\tbyte[" ~ attrs[0].value ~ "] pad" ~ (aligns++).to!string() ~ ";";
+				result ~= format(padFormat, attrs[0].value, aligns++);
 			} else {
 				warning("Cannot parse pad '", attrs[0].name, "'");
 			}
@@ -234,6 +236,72 @@ void parseXcbImport(ref DOMEntity!(string) dom, ref File outFile) {
 	outFile.writeln("import xcb." ~ dom.children[0].text ~ ";");
 }
 
-void parseXcbRequest(ref DOMEntity!string dom, ref File outFile) {
+void parseXcbRequest(ref DOMEntity!string dom, string prefix, ref File outFile) {
+	// First write the OP code
+	Attribute[] attrs = dom.attributes;
+	string structName = attrs[0].value;
 
+	outFile.writeln("immutable enum " ~ structName.toXcbName("", "") ~ " = " ~ attrs[1].value ~ ";");
+
+	// Then write the request struct
+	DOMEntity!string reply;
+	int pad = 0;
+
+	outFile.writefln(structFormat, structName.toXcbName(prefix, "_request_t"));
+	outFile.writeln("\tbyte major_upcode;");
+
+	foreach (c; dom.children) {
+		switch (c.name) {
+		case "pad":
+			outFile.writefln(padFormat, c.attributes[0].value, pad++);
+			break;
+
+		case "reply":
+			reply = c;
+			break;
+
+		case "field":
+			string type = c.attributes.byName("type").value.toDlangType;
+			string name = c.attributes.byName("name").value;
+
+			outFile.writeln("\t" ~ type ~ " " ~ name ~ ";");
+			break;
+
+		default:
+			warning("Cannot handle request member '", c.name, "'");
+			break;
+		}
+	}
+	outFile.writeln("}\n");
+
+	if (reply != DOMEntity!(string).init) {
+		outFile.writefln(structFormat, structName.toXcbName(prefix, "_reply_t"));
+		outFile.writeln("\tbyte response_type;");
+
+		int writen = 0;
+		foreach (r; reply.children) {
+			if (writen++ == 1) {
+				outFile.writeln("\tshort sequence;");
+				outFile.writeln("\tint length;");
+			}
+
+			switch (r.name) {
+			case "pad":
+				outFile.writefln(padFormat, r.attributes[0].value, pad++);
+				break;
+
+			case "field":
+				string type = r.attributes.byName("type").value.toDlangType;
+				string name = r.attributes.byName("name").value;
+
+				outFile.writeln("\t" ~ type ~ " " ~ name ~ ";");
+				break;
+
+			default:
+				warning("Cannot handle request member '", r.name, "'");
+				break;
+			}
+		}
+		outFile.writeln("}\n");
+	}
 }
