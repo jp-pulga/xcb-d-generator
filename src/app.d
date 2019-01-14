@@ -10,8 +10,6 @@ import std.experimental.logger;
 
 alias Attribute = Tuple!(string, "name", string, "value", TextPos, "pos");
 private immutable enum padFormat = "\tbyte[%s] pad%d;";
-private immutable enum structFormat = "struct %s {";
-private immutable enum memberFormat = "%s %s {";
 
 private struct Config {
 	bool reply;
@@ -35,15 +33,15 @@ void main() {
 		foreach (c; dom.children[0].children) {
 			switch (c.name) {
 			case "struct":
-				genericTypeWriter!(Config(false, false, true))(c, prefix, fl);
+				genericTypeWriter!(Config(false, false, true))(c, prefix, "", fl);
 				break;
 
 			case "enum":
-				genericTypeWriter!(Config(false, true, false))(c, prefix, fl);
+				genericTypeWriter!(Config(false, true, false))(c, prefix, "", fl);
 				break;
 
 			case "request":
-				genericTypeWriter!(Config(true, false, false))(c, prefix, fl);
+				genericTypeWriter!(Config(true, false, false))(c, prefix, "", fl);
 				break;
 
 			case "import":
@@ -127,6 +125,8 @@ string toXcbName(string name, string prefix, string sufix) {
 }
 
 string toDlangType(string xcbType) {
+	import std.uni : toLower;
+
 	switch (xcbType) {
 	case "BYTE":
 	case "CARD8":
@@ -141,55 +141,51 @@ string toDlangType(string xcbType) {
 	case "INT32":
 		return "int";
 
-	case "WINDOW":
-		return "xcb_window_t";
-
-	case "COLORMAP":
-		return "xcb_colormap_t";
-
-	case "VISUALID":
-		return "xcb_visualid_t";
-
 	default:
-		return xcbType;
+		return "xcb_" ~ xcbType.toLower ~ "_t";
 	}
 }
 
-void genericTypeWriter(Config cfg)(ref DOMEntity!string dom, string prefix, ref File outFile) {
+void genericTypeWriter(Config cfg)(ref DOMEntity!string dom, string prefix,
+		string memName, ref File outFile) {
 	import std.format : format;
 	import std.uni : toUpper;
 
-	string xcbMemName = dom.attributes.byName("name").value.toXcbName(prefix, "_t");
-	string memType = dom.name;
-
 	static if (cfg.enum_) {
-		string shortName = xcbMemName[0 .. $ - 1].toUpper;
+		string xcbMemName = dom.attributes.byName("name").value.toXcbName(prefix, "_t");
+		immutable string shortName = xcbMemName[0 .. $ - 1].toUpper;
 		string[] enumMembers;
+
+		outFile.writeln("enum " ~ xcbMemName ~ " {");
 	} else static if (cfg.struct_) {
 		import std.array : insertInPlace;
 
 		string[] result;
-		result ~= format(structFormat, dom.attributes[0].value.toXcbName(prefix, "_t"));
+		result ~= format("struct " ~ dom.attributes[0].value.toXcbName(prefix, "_t") ~ " {");
 	} else static if (cfg.reply) {
 		// First write the OP code
 		string structName = dom.attributes[0].value;
+		DOMEntity!string reply;
 
 		outFile.writeln("immutable enum " ~ structName.toXcbName("",
 				"") ~ " = " ~ dom.attributes[1].value ~ ";");
-
-		DOMEntity!string reply;
-	}
-
-	static if (cfg.enum_) {
-		outFile.writefln(memberFormat, memType, xcbMemName);
-	} else static if (cfg.reply) {
 		outFile.writeln("struct " ~ dom.attributes[0].value.toXcbName(prefix, "_request_t") ~ " {");
+	} else {
+		outFile.writeln("struct " ~ memName.toXcbName(prefix, "_reply_t") ~ " {");
+		outFile.writeln("\tubyte response_type;");
+		int writed = 0;
 	}
 
 	int pad = 0;
 	foreach (c; dom.children) {
 		auto attrs = c.attributes;
 
+		static if (!cfg.reply && !cfg.enum_ && !cfg.struct_) {
+			if (writed++ == 1) {
+				outFile.writeln("\tushort sequence;");
+				outFile.writeln("\tuint length;");
+			}
+		}
 		switch (c.name()) {
 
 			static if (cfg.struct_) {
@@ -268,7 +264,9 @@ void genericTypeWriter(Config cfg)(ref DOMEntity!string dom, string prefix, ref 
 	}
 
 	static if (cfg.reply) {
-		//genericTypeWriter!(Config(false, false, false))(reply, prefix, outFile);
+		if (reply != DOMEntity!(string).init) {
+			genericTypeWriter!(Config(false, false, false))(reply, prefix, structName, outFile);
+		}
 	}
 }
 
