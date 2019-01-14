@@ -11,10 +11,11 @@ import std.experimental.logger;
 alias Attribute = Tuple!(string, "name", string, "value", TextPos, "pos");
 private immutable enum padFormat = "\tbyte[%s] pad%d;";
 
-private struct Config {
-	bool reply;
-	bool enum_;
-	bool struct_;
+private enum Config {
+	Reply,
+	Request,
+	Enum,
+	Struct
 }
 
 void main() {
@@ -33,15 +34,15 @@ void main() {
 		foreach (c; dom.children[0].children) {
 			switch (c.name) {
 			case "struct":
-				genericTypeWriter!(Config(false, false, true))(c, prefix, "", fl);
+				genericTypeWriter!(Config.Struct)(c, prefix, "", fl);
 				break;
 
 			case "enum":
-				genericTypeWriter!(Config(false, true, false))(c, prefix, "", fl);
+				genericTypeWriter!(Config.Enum)(c, prefix, "", fl);
 				break;
 
 			case "request":
-				genericTypeWriter!(Config(true, false, false))(c, prefix, "", fl);
+				genericTypeWriter!(Config.Request)(c, prefix, "", fl);
 				break;
 
 			case "import":
@@ -151,18 +152,18 @@ void genericTypeWriter(Config cfg)(ref DOMEntity!string dom, string prefix,
 	import std.format : format;
 	import std.uni : toUpper;
 
-	static if (cfg.enum_) {
+	static if (cfg == Config.Enum) {
 		string xcbMemName = dom.attributes.byName("name").value.toXcbName(prefix, "_t");
 		immutable string shortName = xcbMemName[0 .. $ - 1].toUpper;
 		string[] enumMembers;
 
 		outFile.writeln("enum " ~ xcbMemName ~ " {");
-	} else static if (cfg.struct_) {
+	} else static if (cfg == Config.Struct) {
 		import std.array : insertInPlace;
 
 		string[] result;
 		result ~= format("struct " ~ dom.attributes[0].value.toXcbName(prefix, "_t") ~ " {");
-	} else static if (cfg.reply) {
+	} else static if (cfg == Config.Request) {
 		// First write the OP code
 		string structName = dom.attributes[0].value;
 		DOMEntity!string reply;
@@ -170,7 +171,7 @@ void genericTypeWriter(Config cfg)(ref DOMEntity!string dom, string prefix,
 		outFile.writeln("immutable enum " ~ structName.toXcbName("",
 				"") ~ " = " ~ dom.attributes[1].value ~ ";");
 		outFile.writeln("struct " ~ dom.attributes[0].value.toXcbName(prefix, "_request_t") ~ " {");
-	} else {
+	} else static if (cfg == Config.Reply) {
 		outFile.writeln("struct " ~ memName.toXcbName(prefix, "_reply_t") ~ " {");
 		outFile.writeln("\tubyte response_type;");
 		int writed = 0;
@@ -180,7 +181,7 @@ void genericTypeWriter(Config cfg)(ref DOMEntity!string dom, string prefix,
 	foreach (c; dom.children) {
 		auto attrs = c.attributes;
 
-		static if (!cfg.reply && !cfg.enum_ && !cfg.struct_) {
+		static if (cfg == Config.Reply) {
 			if (writed++ == 1) {
 				outFile.writeln("\tushort sequence;");
 				outFile.writeln("\tuint length;");
@@ -188,7 +189,7 @@ void genericTypeWriter(Config cfg)(ref DOMEntity!string dom, string prefix,
 		}
 		switch (c.name()) {
 
-			static if (cfg.struct_) {
+			static if (cfg == Config.Struct) {
 		case "pad":
 				if (attrs[0].name == "align") {
 					result.insertInPlace(1, "align(" ~ attrs[0].value ~ "):");
@@ -204,7 +205,7 @@ void genericTypeWriter(Config cfg)(ref DOMEntity!string dom, string prefix,
 				break;
 			}
 
-			static if (cfg.enum_) {
+			static if (cfg == Config.Enum) {
 		case "item":
 				if (attrs.length) {
 					string name = shortName ~ attrs[0].value.toSnakeCase.toUpper;
@@ -220,7 +221,7 @@ void genericTypeWriter(Config cfg)(ref DOMEntity!string dom, string prefix,
 					}
 				}
 				break;
-			} else static if (cfg.struct_) {
+			} else static if (cfg == cfg.Struct) {
 		case "field":
 				string type = attrs.byName("type").value.toDlangType;
 				string name = attrs.byName("name").value;
@@ -236,7 +237,7 @@ void genericTypeWriter(Config cfg)(ref DOMEntity!string dom, string prefix,
 				break;
 			}
 
-			static if (cfg.reply) {
+			static if (cfg == cfg.Request) {
 		case "reply":
 				reply = c;
 				break;
@@ -248,7 +249,7 @@ void genericTypeWriter(Config cfg)(ref DOMEntity!string dom, string prefix,
 		}
 	}
 
-	static if (cfg.struct_) {
+	static if (cfg == Config.Struct) {
 		foreach (r; result) {
 			outFile.writeln(r);
 		}
@@ -256,16 +257,16 @@ void genericTypeWriter(Config cfg)(ref DOMEntity!string dom, string prefix,
 
 	outFile.writeln("}\n");
 
-	static if (cfg.enum_) {
+	static if (cfg == cfg.Enum) {
 		foreach (m; enumMembers) {
 			outFile.write("alias " ~ m ~ " = " ~ shortName ~ "." ~ m ~ ";\n");
 		}
 		outFile.writeln();
 	}
 
-	static if (cfg.reply) {
+	static if (cfg == cfg.Request) {
 		if (reply != DOMEntity!(string).init) {
-			genericTypeWriter!(Config(false, false, false))(reply, prefix, structName, outFile);
+			genericTypeWriter!(Config.Reply)(reply, prefix, structName, outFile);
 		}
 	}
 }
