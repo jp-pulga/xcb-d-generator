@@ -9,6 +9,7 @@ private struct TKAlign;
 private struct TKStMember;
 private struct TKEnMember;
 private struct TKAlias;
+private struct TKDefine;
 
 /// Token struct
 public struct Token(T) {
@@ -91,6 +92,11 @@ public:
 			_members ~= memeber;
 		}
 
+		/// Add an alias to the list of alisses
+		void addDefine(Token!TKDefine define) @trusted {
+			_defines ~= define;
+		}
+
 		/// Set the content alingment
 		void setAlign(Token!TKAlign _align) @trusted {
 			this._align = _align;
@@ -102,9 +108,7 @@ public:
 		void addMember(Token!TKEnMember memeber) @trusted {
 			_members ~= memeber;
 		}
-	}
 
-	static if (is(T == TKStruct) || is(T == TKEnum)) {
 		/// Add an alias to the list of alisses
 		void addAlias(Token!TKAlias _alias) @trusted {
 			_aliases ~= _alias;
@@ -129,7 +133,7 @@ public:
 			}
 			fl.writeln("}\n");
 
-			foreach (a; _aliases) {
+			foreach (a; _defines) {
 				a.write(fl);
 			}
 		} else static if (is(T == TKEnum)) {
@@ -156,6 +160,9 @@ public:
 			string upperMember = _member.toUpper;
 			fl.writeln(_doc);
 			fl.writeln("alias ", upperMember, " = ", _type, ".", upperMember, ";");
+		} else static if (is(T == TKDefine)) {
+			fl.writeln(_doc);
+			fl.writeln("immutable enum ", _name, " = ", _value, ";");
 		}
 	}
 
@@ -168,7 +175,7 @@ private:
 
 		Token!TKAlign _align;
 		Token!TKStMember[] _members;
-		Token!TKAlias[] _aliases;
+		Token!TKDefine[] _defines;
 	} else static if (is(T == TKEnum)) {
 		string _prefix;
 		string _name;
@@ -183,7 +190,7 @@ private:
 		string _type;
 		string _name;
 		string _doc = "///";
-	} else static if (is(T == TKEnMember)) {
+	} else static if (is(T == TKEnMember) || is(T == TKDefine)) {
 		string _name;
 		string _value;
 		string _doc = "///";
@@ -200,13 +207,14 @@ public alias new_struct_member = Token!TKStMember;
 public alias new_enum_member = Token!TKEnMember;
 public alias new_alias = Token!TKAlias;
 public alias new_aling = Token!TKAlign;
+public alias new_define = Token!TKDefine;
 
 ///
 public Token!TKStMember new_pad(string length, int pad) @trusted {
 	import std.conv : to;
 
 	if (length == "1") {
-		return new_struct_member("ubyte", "pad" ~ pad.to!string ~ ";");
+		return new_struct_member("ubyte", "pad" ~ pad.to!string);
 	}
-	return new_struct_member("ubyte[" ~ length ~ "]", "pad" ~ pad.to!string ~ ";");
+	return new_struct_member("ubyte[" ~ length ~ "]", "pad" ~ pad.to!string);
 }

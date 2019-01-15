@@ -95,7 +95,7 @@ void genericTypeWriter(Config cfg)(ref DOMEntity!string dom, string prefix,
 		int writed = 0;
 
 		auto parent = new_struct(prefix, structName, "_request_t");
-		parent.addAlias(new_alias(structName, dom.attributes[1].value));
+		parent.addDefine(new_define(structName, dom.attributes[1].value));
 		parent.addMember(new_struct_member("ushort", "major_opcode"));
 	} else static if (cfg == Config.Reply) {
 		int writed = 0;
